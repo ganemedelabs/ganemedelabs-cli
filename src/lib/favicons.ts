@@ -2,34 +2,12 @@ import { Color } from "csspectrum";
 import sharp from "sharp";
 import path from "path";
 import fs from "fs";
-import minimist from "minimist";
 import pngToIco from "png-to-ico";
+import { red, green, blue, yellow } from "../utils/colors";
+import { parseArgs } from "../utils/utils";
 
-const RED = "\x1b[0;31m";
-const GREEN = "\x1b[0;32m";
-const YELLOW = "\x1b[0;33m";
-const BLUE = "\x1b[0;34m";
-const RESET = "\x1b[0m";
-
-function red(text: string) {
-    return `${RED}${text}${RESET}`;
-}
-
-function green(text: string) {
-    return `${GREEN}${text}${RESET}`;
-}
-
-function yellow(text: string) {
-    return `${YELLOW}${text}${RESET}`;
-}
-
-function blue(text: string) {
-    return `${BLUE}${text}${RESET}`;
-}
-
-async function generateFavicons() {
-    const argv = minimist(process.argv.slice(2));
-    const noColor = argv["no-color"] || false;
+async function main() {
+    const argv = parseArgs(process.argv.slice(2));
 
     const imagePath = argv.image || path.join(__dirname, "../assets/logo.png");
     const themeColorInput = argv.theme || "#FFFFFF";
@@ -118,7 +96,6 @@ async function generateFavicons() {
 `;
 
     const highlightHtml = (text: string) => {
-        if (noColor) return text;
         return text
             .replace(/(?<=<\/?)[\w-]+/g, (match) => blue(match))
             .replace(/[\w-]+(?==)/g, (match) => yellow(match))
@@ -126,7 +103,6 @@ async function generateFavicons() {
     };
 
     const highlightJson = (text: string) => {
-        if (noColor) return text;
         return text
             .replace(/"([^"]+)"(?=\s*:)/g, (match) => yellow(match))
             .replace(/:\s*"([^"]*)"/g, (match) => {
@@ -151,7 +127,7 @@ ${highlightedJson}
 `);
 }
 
-generateFavicons().catch((error) => {
+main().catch((error) => {
     console.error(red(`❌ Error: ${error.message}`));
     process.exit(1);
 });
