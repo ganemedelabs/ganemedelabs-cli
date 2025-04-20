@@ -1,6 +1,6 @@
 {
     "name": "@ganemedelabs/cli",
-    "version": "1.2.0",
+    "version": "1.2.1",
     "bin": "dist/bin/cli.js",
     "scripts": {
         "build": "tsc && cpx \"assets/**/*\" dist/assets",
@@ -28,6 +28,7 @@
         "@types/node": "^22.10.1",
         "@typescript-eslint/eslint-plugin": "^8.16.0",
         "@typescript-eslint/parser": "^8.16.0",
+        "cli-highlight": "^2.1.11",
         "cpx": "^1.5.0",
         "csspectrum": "^0.1.4",
         "eslint": "^9.16.0",

@@ -3,23 +3,27 @@ import sharp from "sharp";
 import path from "path";
 import fs from "fs";
 import pngToIco from "png-to-ico";
-import { red, green, blue, yellow } from "../utils/colors";
 import { parseArgs } from "../utils/utils";
+import { highlight } from "cli-highlight";
+import { red } from "../utils/colors";
 
 async function main() {
     const argv = parseArgs(process.argv.slice(2));
+    const isNextJs = argv.next !== undefined;
+    const noPadding = argv["no-padding"];
 
     const imagePath = argv.image || path.join(__dirname, "../assets/logo.png");
     const themeColorInput = argv.theme || "#FFFFFF";
+    const themeColorHex = Color.from(themeColorInput).to("hex");
 
-    const themeColor = Color.from(themeColorInput).in("rgb").getComponents();
+    const themeColor = Color.from(themeColorHex).in("rgb").getComponents();
 
     if (!fs.existsSync(imagePath)) {
         console.error(red(`❌ Image not found: ${imagePath}`));
         process.exit(1);
     }
 
-    const outputDir = path.join(process.cwd(), "images", "favicons");
+    const outputDir = path.join(process.cwd(), "images/favicons");
     if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
     }
@@ -40,10 +44,13 @@ async function main() {
     }
 
     const appleSize = 180;
+    const padding = noPadding ? 0 : 20;
+    const canvasSize = appleSize + padding * 2;
+
     const background = await sharp({
         create: {
-            width: appleSize,
-            height: appleSize,
+            width: canvasSize,
+            height: canvasSize,
             channels: 4,
             background: themeColor,
         },
@@ -52,7 +59,10 @@ async function main() {
         .toBuffer();
 
     const resizedImage = await sharp(imagePath)
-        .resize(appleSize, appleSize, { fit: "contain", background: { r: 0, g: 0, b: 0, alpha: 0 } })
+        .resize(appleSize, appleSize, {
+            fit: "contain",
+            background: { r: 0, g: 0, b: 0, alpha: 0 },
+        })
         .toBuffer();
 
     await sharp(background)
@@ -64,7 +74,49 @@ async function main() {
     const icoBuffer = await pngToIco(icoBuffers);
     fs.writeFileSync(path.join(rootDir, "favicon.ico"), icoBuffer);
 
-    const manifestFields = {
+    const highlightCode = (text: string, lang: string) => {
+        try {
+            /* eslint-disable indent */
+            const hljsLang =
+                lang === "tsx" || lang === "ts"
+                    ? "typescript"
+                    : lang === "json"
+                      ? "json"
+                      : lang === "html"
+                        ? "xml"
+                        : "javascript";
+            /* eslint-enable indent */
+            return highlight(text, {
+                language: hljsLang,
+                ignoreIllegals: true,
+            });
+        } catch {
+            return text;
+        }
+    };
+
+    if (isNextJs) {
+        const layoutContent = `
+export const metadata = {
+    manifest: "/manifest.json",
+    icons: {
+        icon: [
+            { rel: "icon", type: "image/png", sizes: "96x96", url: "/images/favicons/favicon-96x96.png" },
+            { rel: "icon", type: "image/png", sizes: "32x32", url: "/images/favicons/favicon-32x32.png" },
+            { rel: "icon", type: "image/png", sizes: "16x16", url: "/images/favicons/favicon-16x16.png" },
+        ],
+        apple: "/images/favicons/apple-touch-icon.png",
+    },
+};
+
+export const viewport = {
+    themeColor: "${themeColorHex}",
+};
+`;
+
+        const manifestContent = `
+export default function manifest() {
+    return {
         icons: [
             {
                 src: "/favicon.ico",
@@ -72,59 +124,74 @@ async function main() {
                 type: "image/x-icon",
             },
             {
-                src: "/android-chrome-192x192.png",
+                src: "/images/favicons/android-chrome-192x192.png",
                 sizes: "192x192",
                 type: "image/png",
             },
             {
-                src: "/android-chrome-512x512.png",
+                src: "/images/favicons/android-chrome-512x512.png",
                 sizes: "512x512",
                 type: "image/png",
             },
         ],
-        theme_color: themeColorInput,
-        background_color: themeColorInput,
+        theme_color: "${themeColorHex}",
+        background_color: "${themeColorHex}",
     };
-
-    const htmlContent = `
-<link rel="manifest" href="/manifest.json" />
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-<link rel="icon" type="image/png" sizes="96x96" href="/favicon-96x96.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
-<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
-<meta name="theme-color" content="${themeColorInput}" />
+}
 `;
 
-    const highlightHtml = (text: string) => {
-        return text
-            .replace(/(?<=<\/?)[\w-]+/g, (match) => blue(match))
-            .replace(/[\w-]+(?==)/g, (match) => yellow(match))
-            .replace(/"[^"]*"/g, (match) => green(match));
-    };
+        console.log(`
+1. Add the following to your app/layout.tsx file:
 
-    const highlightJson = (text: string) => {
-        return text
-            .replace(/"([^"]+)"(?=\s*:)/g, (match) => yellow(match))
-            .replace(/:\s*"([^"]*)"/g, (match) => {
-                const value = match.match(/"[^"]*"/)?.[0];
-                return `: ${green(value!)}`;
-            })
-            .replace(/:\s*(\d+|true|false|null)/g, (match, val) => `: ${blue(val)}`);
-    };
+${highlightCode(layoutContent.trim(), "tsx")}
 
-    const highlightedHtml = highlightHtml(htmlContent);
-    const jsonString = JSON.stringify(manifestFields, null, 2);
-    const highlightedJson = highlightJson(jsonString);
+2. Create an app/manifest.ts file with the following content:
 
-    console.log(`
+${highlightCode(manifestContent.trim(), "ts")}
+`);
+    } else {
+        const manifestFields = {
+            icons: [
+                {
+                    src: "/favicon.ico",
+                    sizes: "64x64 32x32 24x24 16x16",
+                    type: "image/x-icon",
+                },
+                {
+                    src: "/images/favicons/android-chrome-192x192.png",
+                    sizes: "192x192",
+                    type: "image/png",
+                },
+                {
+                    src: "/images/favicons/android-chrome-512x512.png",
+                    sizes: "512x512",
+                    type: "image/png",
+                },
+            ],
+            theme_color: themeColorHex,
+            background_color: themeColorHex,
+        };
+
+        const htmlContent = `
+<link rel="manifest" href="/manifest.json" />
+<link rel="apple-touch-icon" sizes="180x180" href="/images/favicons/apple-touch-icon.png" />
+<link rel="icon" type="image/png" sizes="96x96" href="/images/favicons/favicon-96x96.png" />
+<link rel="icon" type="image/png" sizes="32x32" href="/images/favicons/favicon-32x32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="/images/favicons/favicon-16x16.png" />
+<meta name="theme-color" content="${themeColorHex}" />
+`;
+
+        const jsonString = JSON.stringify(manifestFields, null, 2);
+        console.log(`
 1. Place the following HTML tags in the <head> section of your HTML file:
 
-${highlightedHtml.trim()}
+${highlightCode(htmlContent.trim(), "html")}
 
-2. Place the following fields in a manifest.json file in your root directory ${outputDir}:
+2. Place the following fields in a manifest.json file in your root directory:
 
-${highlightedJson}
+${highlightCode(jsonString, "json")}
 `);
+    }
 }
 
 main().catch((error) => {
